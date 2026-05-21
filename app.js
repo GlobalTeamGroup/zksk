@@ -1,10 +1,10 @@
 // ============================================================
 //  ZKSK — app.js   (ScrollCanvas Engine — Frame-based)
-//  864 frames, 6 pages × 144, synced to native scroll
+//  864 frames, 7 pages, synced to native scroll
 // ============================================================
 
 const TOTAL_FRAMES = 864;
-const PAGE_COUNT   = 6;
+const PAGE_COUNT   = 7;
 const LERP         = 0.02;
 const CONCURRENCY  = 48;
 const isMobile     = innerWidth < 768;
@@ -208,7 +208,7 @@ document.querySelectorAll('[data-page]').forEach(el => {
 document.querySelectorAll('a[href="#contacts"]').forEach(a => {
   a.addEventListener('click', e => {
     e.preventDefault();
-    if (pages[5]) pages[5].scrollIntoView({ behavior: 'smooth' });
+    if (pages[6]) pages[6].scrollIntoView({ behavior: 'smooth' });
   });
 });
 
@@ -267,3 +267,65 @@ if (form) {
     }
   });
 }
+
+// ============================================================
+//  GALLERY SCROLL
+// ============================================================
+(function() {
+  const scroll = document.getElementById('gallery-scroll');
+  const track = scroll ? scroll.querySelector('.gallery-track') : null;
+  const prevBtn = document.getElementById('gallery-prev');
+  const nextBtn = document.getElementById('gallery-next');
+  const dotsWrap = document.getElementById('gallery-dots');
+  if (!scroll || !track) return;
+
+  const items = track.querySelectorAll('.gallery-item');
+  const totalDots = Math.ceil(items.length / 3);
+
+  // Create dots
+  for (let i = 0; i < totalDots; i++) {
+    const dot = document.createElement('button');
+    dot.className = 'gallery-dot' + (i === 0 ? ' active' : '');
+    dot.addEventListener('click', () => scrollToGroup(i));
+    dotsWrap.appendChild(dot);
+  }
+
+  function scrollToGroup(idx) {
+    const item = items[idx * 3];
+    if (item) scroll.scrollTo({ left: item.offsetLeft - 24, behavior: 'smooth' });
+  }
+
+  function updateDots() {
+    const scrollLeft = scroll.scrollLeft;
+    const itemWidth = items[0].offsetWidth + 16;
+    const activeIdx = Math.min(Math.round(scrollLeft / (itemWidth * 3)), totalDots - 1);
+    dotsWrap.querySelectorAll('.gallery-dot').forEach((d, i) =>
+      d.classList.toggle('active', i === activeIdx));
+  }
+
+  scroll.addEventListener('scroll', updateDots, { passive: true });
+
+  prevBtn.addEventListener('click', () => {
+    const itemWidth = items[0].offsetWidth + 16;
+    scroll.scrollBy({ left: -itemWidth * 3, behavior: 'smooth' });
+  });
+  nextBtn.addEventListener('click', () => {
+    const itemWidth = items[0].offsetWidth + 16;
+    scroll.scrollBy({ left: itemWidth * 3, behavior: 'smooth' });
+  });
+
+  // Drag to scroll
+  let isDragging = false, startX, scrollStart;
+  scroll.addEventListener('mousedown', e => {
+    isDragging = true; startX = e.pageX; scrollStart = scroll.scrollLeft;
+    scroll.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    e.preventDefault();
+    scroll.scrollLeft = scrollStart - (e.pageX - startX);
+  });
+  window.addEventListener('mouseup', () => {
+    isDragging = false; scroll.classList.remove('grabbing');
+  });
+})();
