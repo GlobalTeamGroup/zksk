@@ -59,7 +59,7 @@ loaderCSS.textContent = `
   .loader-inner { text-align:center; display:flex; flex-direction:column; align-items:center; gap:16px; }
   .loader-logo {
     font-family:'Montserrat',sans-serif;
-    font-size:1.4rem; font-weight:700; letter-spacing:0.3em;
+    font-size:2.8rem; font-weight:700; letter-spacing:0.3em;
     color:#c9a84c;
     animation:loaderPulse 2s ease-in-out infinite;
   }
