@@ -1,17 +1,16 @@
-﻿/* ═══════════════════════════════════════════
-   ZKSK — Cinematic Scroll Engine
+/* ═══════════════════════════════════════════
+   ZKSK — Cinematic Scroll Engine (Video-based)
+   Uses HTML5 video.currentTime seek instead of image sequences.
    ═══════════════════════════════════════════ */
 
 (function () {
   'use strict';
 
   /* ── CONFIG ── */
-  const TOTAL_FRAMES  = 864;
+  const VIDEO_COUNT   = 9;
   const PAGES         = 6;
-  const FRAMES_PER_PG = TOTAL_FRAMES / PAGES;      // 150
-  const SCROLL_HEIGHT = TOTAL_FRAMES * 12;          // px per frame
-  const LERP_FACTOR   = 0.035;
-  const MOBILE_BP     = 768;
+  const SCROLL_HEIGHT = 10800;           // total scrollable height (px)
+  const LERP_FACTOR   = 0.06;
 
   /* ── ELEMENTS ── */
   const canvas    = document.getElementById('scrollCanvas');
@@ -25,23 +24,15 @@
   const mobileNav = document.getElementById('mobile-nav');
 
   /* ── STATE ── */
-  let images       = [];
-  let loaded       = 0;
-  let currentFrame = 0;
-  let targetFrame  = 0;
-  let activePage   = 0;
-  let lastScroll   = 0;
-  let headerHidden = false;
-  let rafId        = null;
-
-  /* ── HELPERS ── */
-  function isMobile() { return window.innerWidth <= MOBILE_BP; }
-
-  function framePath(i) {
-    const dir = isMobile() ? 'mobile' : 'desktop';
-    const num = String(i + 1).padStart(4, '0');
-    return `frames/${dir}/frame_${num}.jpg`;
-  }
+  let videos       = [];
+  let videoDurations = [];
+  let totalDuration  = 0;
+  let loadedCount    = 0;
+  let currentTime    = 0;  // global time (sum of all video durations)
+  let targetTime     = 0;
+  let activePage     = 0;
+  let lastScroll     = 0;
+  let headerHidden   = false;
 
   /* ── RESIZE ── */
   function resize() {
@@ -52,19 +43,44 @@
     canvas.style.height = window.innerHeight + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     uiLayer.style.height = SCROLL_HEIGHT + 'px';
-    drawFrame(Math.round(currentFrame));
   }
 
   /* ── DRAW ── */
-  function drawFrame(idx) {
-    idx = Math.max(0, Math.min(TOTAL_FRAMES - 1, idx));
-    const img = images[idx];
-    if (!img || !img.complete || !img.naturalWidth) return;
+  function drawCurrentFrame() {
+    // Find which video and what time within it
+    let accumulated = 0;
+    let videoIdx = 0;
+    let localTime = 0;
 
-    const cw = canvas.width / (Math.min(window.devicePixelRatio || 1, 2));
-    const ch = canvas.height / (Math.min(window.devicePixelRatio || 1, 2));
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
+    for (let i = 0; i < VIDEO_COUNT; i++) {
+      if (currentTime < accumulated + videoDurations[i]) {
+        videoIdx = i;
+        localTime = currentTime - accumulated;
+        break;
+      }
+      accumulated += videoDurations[i];
+      if (i === VIDEO_COUNT - 1) {
+        videoIdx = VIDEO_COUNT - 1;
+        localTime = videoDurations[VIDEO_COUNT - 1];
+      }
+    }
+
+    const video = videos[videoIdx];
+    if (!video || video.readyState < 2) return;
+
+    // Seek video
+    const clampedTime = Math.max(0, Math.min(localTime, video.duration || 0));
+    if (Math.abs(video.currentTime - clampedTime) > 0.03) {
+      video.currentTime = clampedTime;
+    }
+
+    // Draw to canvas
+    const cw = canvas.width / Math.min(window.devicePixelRatio || 1, 2);
+    const ch = canvas.height / Math.min(window.devicePixelRatio || 1, 2);
+    const iw = video.videoWidth;
+    const ih = video.videoHeight;
+    if (!iw || !ih) return;
+
     const scale = Math.max(cw / iw, ch / ih);
     const dw = iw * scale;
     const dh = ih * scale;
@@ -72,37 +88,29 @@
     const dy = (ch - dh) / 2;
 
     ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.drawImage(video, dx, dy, dw, dh);
   }
 
   /* ── PAGE ACTIVATION ── */
   function setActivePage(idx) {
     if (idx === activePage) return;
     activePage = idx;
-    pages.forEach((p, i) => {
-      p.classList.toggle('is-active', i === idx);
-    });
-    // Update nav
-    document.querySelectorAll('.nav-link').forEach(l => {
-      l.classList.toggle('active', parseInt(l.dataset.page) === idx);
-    });
-    // Scroll indicator
-    if (indicator) {
-      indicator.classList.toggle('hide', idx > 0);
-    }
+    pages.forEach((p, i) => p.classList.toggle('is-active', i === idx));
+    document.querySelectorAll('.nav-link').forEach(l =>
+      l.classList.toggle('active', parseInt(l.dataset.page) === idx)
+    );
+    if (indicator) indicator.classList.toggle('hide', idx > 0);
   }
 
   /* ── SCROLL HANDLER ── */
   function onScroll() {
     const scrollY  = window.pageYOffset || document.documentElement.scrollTop;
-    const progress = scrollY / (SCROLL_HEIGHT - window.innerHeight);
-    targetFrame    = progress * (TOTAL_FRAMES - 1);
+    const progress = scrollY / Math.max(1, SCROLL_HEIGHT - window.innerHeight);
+    targetTime     = progress * totalDuration;
 
-    // Page index
     const pageIdx = Math.min(PAGES - 1, Math.floor(progress * PAGES));
     setActivePage(pageIdx);
 
-    // Header hide/show
     const goingDown = scrollY > lastScroll && scrollY > 200;
     if (goingDown && !headerHidden) {
       header.style.transform = 'translateX(-50%) translateY(-120%)';
@@ -116,40 +124,42 @@
 
   /* ── ANIMATION LOOP ── */
   function loop() {
-    currentFrame += (targetFrame - currentFrame) * LERP_FACTOR;
-    drawFrame(Math.round(currentFrame));
-    rafId = requestAnimationFrame(loop);
+    currentTime += (targetTime - currentTime) * LERP_FACTOR;
+    drawCurrentFrame();
+    requestAnimationFrame(loop);
   }
 
-  /* ── LOAD FRAMES ── */
-  function loadFrames() {
-    const batchSize = 6;
-    let queue = 0;
+  /* ── LOAD VIDEOS ── */
+  function loadVideos() {
+    for (let i = 1; i <= VIDEO_COUNT; i++) {
+      const video = document.createElement('video');
+      video.src = `videos/${i}.mp4`;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.crossOrigin = 'anonymous';
+      video.style.display = 'none';
+      document.body.appendChild(video);
 
-    function loadNext(i) {
-      if (i >= TOTAL_FRAMES) return;
-      const img = new Image();
-      img.onload = img.onerror = function () {
-        loaded++;
-        queue--;
-        // Update preloader
-        if (loaded >= Math.min(30, TOTAL_FRAMES)) {
+      video.addEventListener('loadedmetadata', () => {
+        videoDurations[i - 1] = video.duration;
+        loadedCount++;
+        if (loadedCount >= VIDEO_COUNT) {
+          totalDuration = videoDurations.reduce((a, b) => a + b, 0);
           preloader.classList.add('hidden');
         }
-        // Continue loading
-        const next = i + 1;
-        if (next < TOTAL_FRAMES && queue < batchSize) {
-          loadNext(next);
-        }
-      };
-      img.src = framePath(i);
-      images[i] = img;
-      queue++;
-    }
+      });
 
-    // Prioritize first 30 frames for fast start
-    for (let i = 0; i < Math.min(batchSize, TOTAL_FRAMES); i++) {
-      loadNext(i);
+      video.addEventListener('error', () => {
+        videoDurations[i - 1] = 8; // fallback 8s
+        loadedCount++;
+        if (loadedCount >= VIDEO_COUNT) {
+          totalDuration = videoDurations.reduce((a, b) => a + b, 0);
+          preloader.classList.add('hidden');
+        }
+      });
+
+      videos[i - 1] = video;
     }
   }
 
@@ -161,7 +171,6 @@
         const pageIdx = parseInt(link.dataset.page);
         const scrollTo = (pageIdx / PAGES) * SCROLL_HEIGHT;
         window.scrollTo({ top: scrollTo, behavior: 'smooth' });
-        // Close mobile nav
         if (mobileNav.classList.contains('open')) {
           mobileNav.classList.remove('open');
           burger.classList.remove('open');
@@ -169,13 +178,11 @@
       });
     });
 
-    // Burger
     burger.addEventListener('click', () => {
       burger.classList.toggle('open');
       mobileNav.classList.toggle('open');
     });
 
-    // CTA links
     document.querySelectorAll('a[href="#contacts"]').forEach(a => {
       a.addEventListener('click', (e) => {
         e.preventDefault();
@@ -214,25 +221,18 @@
   /* ── INIT ── */
   function init() {
     resize();
-    loadFrames();
+    loadVideos();
     setupNav();
     animateCounters();
-
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', resize);
-
-    // Start render loop
     loop();
-
-    // Initial state
     setActivePage(0);
   }
 
-  // Wait for DOM
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
 })();
-
