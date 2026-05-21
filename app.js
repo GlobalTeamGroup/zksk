@@ -220,17 +220,7 @@ document.getElementById('burger').addEventListener('click', () => {
   document.getElementById('mobile-nav').classList.toggle('open');
 });
 
-// ============================================================
-//  NAVBAR SCROLL EFFECT
-// ============================================================
-window.addEventListener('scroll', () => {
-  const header = document.getElementById('site-header');
-  if (scrollY > 60) {
-    header.style.background = 'rgba(10,12,16,0.97)';
-  } else {
-    header.style.background = 'rgba(10,12,16,0.80)';
-  }
-}, { passive: true });
+// NAVBAR SCROLL EFFECT removed — header stays translucent
 
 // ============================================================
 //  COUNTER ANIMATION
