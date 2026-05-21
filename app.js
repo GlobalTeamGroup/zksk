@@ -1,238 +1,279 @@
-/* ═══════════════════════════════════════════
-   ZKSK — Cinematic Scroll Engine (Video-based)
-   Uses HTML5 video.currentTime seek instead of image sequences.
-   ═══════════════════════════════════════════ */
+// ============================================================
+//  ZKSK — app.js   (ScrollCanvas Engine — Frame-based)
+//  864 frames, 6 pages × 144, synced to native scroll
+// ============================================================
 
-(function () {
-  'use strict';
+const TOTAL_FRAMES = 864;
+const PAGE_COUNT   = 6;
+const LERP         = 0.02;
+const CONCURRENCY  = 48;
+const isMobile     = innerWidth < 768;
+const FRAME_DIR    = isMobile ? 'frames-mobile' : 'frames-webp';
 
-  /* ── CONFIG ── */
-  const VIDEO_COUNT   = 9;
-  const PAGES         = 6;
-  const SCROLL_HEIGHT = 10800;           // total scrollable height (px)
-  const LERP_FACTOR   = 0.06;
+// ---- DOM refs ----
+const canvas  = document.getElementById('scrollCanvas');
+const ctx     = canvas.getContext('2d');
+const pages   = Array.from(document.querySelectorAll('.page'));
+const navLinks    = document.querySelectorAll('.desktop-nav .nav-link');
+const mobileLinks = document.querySelectorAll('.mobile-nav .nav-link');
 
-  /* ── ELEMENTS ── */
-  const canvas    = document.getElementById('scrollCanvas');
-  const ctx       = canvas.getContext('2d');
-  const uiLayer   = document.getElementById('ui-layer');
-  const pages     = Array.from(document.querySelectorAll('.page'));
-  const preloader = document.getElementById('preloader');
-  const indicator = document.getElementById('scroll-indicator');
-  const header    = document.getElementById('site-header');
-  const burger    = document.getElementById('burger');
-  const mobileNav = document.getElementById('mobile-nav');
+// ---- State ----
+const frames = new Array(TOTAL_FRAMES);
+let loadedCount  = 0;
+let isReady      = false;
+let currentFrame = 0;
+let targetFrame  = 0;
 
-  /* ── STATE ── */
-  let videos       = [];
-  let videoDurations = [];
-  let totalDuration  = 0;
-  let loadedCount    = 0;
-  let currentTime    = 0;  // global time (sum of all video durations)
-  let targetTime     = 0;
-  let activePage     = 0;
-  let lastScroll     = 0;
-  let headerHidden   = false;
+// ---- Canvas resize ----
+function resizeCanvas() {
+  canvas.width  = innerWidth;
+  canvas.height = innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
 
-  /* ── RESIZE ── */
-  function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width  = window.innerWidth  * dpr;
-    canvas.height = window.innerHeight * dpr;
-    canvas.style.width  = window.innerWidth  + 'px';
-    canvas.style.height = window.innerHeight + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    uiLayer.style.height = SCROLL_HEIGHT + 'px';
+// ============================================================
+//  LOADER (created by JS, removed after all frames load)
+// ============================================================
+const loaderEl = document.createElement('div');
+loaderEl.id = 'loader';
+loaderEl.innerHTML = `
+  <div class="loader-inner">
+    <img src="logo.png" alt="ЗКСK" style="width:160px;height:160px;object-fit:contain;margin-bottom:12px">
+    <div class="loader-logo">ЗКСK</div>
+    <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
+    <div class="loader-pct" id="loader-pct">0%</div>
+  </div>`;
+document.body.appendChild(loaderEl);
+
+const loaderCSS = document.createElement('style');
+loaderCSS.textContent = `
+  #loader {
+    position:fixed; inset:0; z-index:9999;
+    background:rgba(10,12,16,0.96);
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity 0.8s ease;
+    backdrop-filter:blur(8px);
   }
-
-  /* ── DRAW ── */
-  function drawCurrentFrame() {
-    // Find which video and what time within it
-    let accumulated = 0;
-    let videoIdx = 0;
-    let localTime = 0;
-
-    for (let i = 0; i < VIDEO_COUNT; i++) {
-      if (currentTime < accumulated + videoDurations[i]) {
-        videoIdx = i;
-        localTime = currentTime - accumulated;
-        break;
-      }
-      accumulated += videoDurations[i];
-      if (i === VIDEO_COUNT - 1) {
-        videoIdx = VIDEO_COUNT - 1;
-        localTime = videoDurations[VIDEO_COUNT - 1];
-      }
-    }
-
-    const video = videos[videoIdx];
-    if (!video || video.readyState < 2) return;
-
-    // Seek video
-    const clampedTime = Math.max(0, Math.min(localTime, video.duration || 0));
-    if (Math.abs(video.currentTime - clampedTime) > 0.03) {
-      video.currentTime = clampedTime;
-    }
-
-    // Draw to canvas
-    const cw = canvas.width / Math.min(window.devicePixelRatio || 1, 2);
-    const ch = canvas.height / Math.min(window.devicePixelRatio || 1, 2);
-    const iw = video.videoWidth;
-    const ih = video.videoHeight;
-    if (!iw || !ih) return;
-
-    const scale = Math.max(cw / iw, ch / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const dx = (cw - dw) / 2;
-    const dy = (ch - dh) / 2;
-
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(video, dx, dy, dw, dh);
+  #loader.fade-out { opacity:0; pointer-events:none; }
+  .loader-inner { text-align:center; display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .loader-logo {
+    font-family:'Montserrat',sans-serif;
+    font-size:1.4rem; font-weight:700; letter-spacing:0.3em;
+    color:#c9a84c;
+    animation:loaderPulse 2s ease-in-out infinite;
   }
-
-  /* ── PAGE ACTIVATION ── */
-  function setActivePage(idx) {
-    if (idx === activePage) return;
-    activePage = idx;
-    pages.forEach((p, i) => p.classList.toggle('is-active', i === idx));
-    document.querySelectorAll('.nav-link').forEach(l =>
-      l.classList.toggle('active', parseInt(l.dataset.page) === idx)
-    );
-    if (indicator) indicator.classList.toggle('hide', idx > 0);
+  @keyframes loaderPulse { 0%,100%{opacity:.6} 50%{opacity:1} }
+  .loader-bar-wrap {
+    width:260px; height:2px; background:rgba(201,168,76,.2);
+    border-radius:2px; overflow:hidden;
   }
-
-  /* ── SCROLL HANDLER ── */
-  function onScroll() {
-    const scrollY  = window.pageYOffset || document.documentElement.scrollTop;
-    const progress = scrollY / Math.max(1, SCROLL_HEIGHT - window.innerHeight);
-    targetTime     = progress * totalDuration;
-
-    const pageIdx = Math.min(PAGES - 1, Math.floor(progress * PAGES));
-    setActivePage(pageIdx);
-
-    const goingDown = scrollY > lastScroll && scrollY > 200;
-    if (goingDown && !headerHidden) {
-      header.style.transform = 'translateX(-50%) translateY(-120%)';
-      headerHidden = true;
-    } else if (!goingDown && headerHidden) {
-      header.style.transform = 'translateX(-50%) translateY(0)';
-      headerHidden = false;
-    }
-    lastScroll = scrollY;
+  .loader-bar {
+    height:100%; width:0%;
+    background:linear-gradient(90deg,#c9a84c,#e8c97a);
+    border-radius:2px; transition:width 0.1s;
   }
+  .loader-pct { font-size:.75rem; color:rgba(201,168,76,.6); letter-spacing:.15em; }
+`;
+document.head.appendChild(loaderCSS);
 
-  /* ── ANIMATION LOOP ── */
-  function loop() {
-    currentTime += (targetTime - currentTime) * LERP_FACTOR;
-    drawCurrentFrame();
-    requestAnimationFrame(loop);
-  }
+// ============================================================
+//  FRAME LOADING
+// ============================================================
+function frameName(i) {
+  return `${FRAME_DIR}/frame_${String(i + 1).padStart(6, '0')}.webp`;
+}
 
-  /* ── LOAD VIDEOS ── */
-  function loadVideos() {
-    for (let i = 1; i <= VIDEO_COUNT; i++) {
-      const video = document.createElement('video');
-      video.src = `videos/${i}.mp4`;
-      video.muted = true;
-      video.playsInline = true;
-      video.preload = 'auto';
-      video.crossOrigin = 'anonymous';
-      video.style.display = 'none';
-      document.body.appendChild(video);
+async function loadFrame(idx) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      frames[idx] = img;
+      loadedCount++;
+      if (loadedCount === 1) { isReady = true; drawFrame(0); }
+      const pct = Math.round((loadedCount / TOTAL_FRAMES) * 100);
+      const bar = document.getElementById('loader-bar');
+      const pctEl = document.getElementById('loader-pct');
+      if (bar) bar.style.width = pct + '%';
+      if (pctEl) pctEl.textContent = pct + '%';
+      resolve();
+    };
+    img.onerror = () => { frames[idx] = null; loadedCount++; resolve(); };
+    img.src = frameName(idx);
+  });
+}
 
-      video.addEventListener('loadedmetadata', () => {
-        videoDurations[i - 1] = video.duration;
-        loadedCount++;
-        if (loadedCount >= VIDEO_COUNT) {
-          totalDuration = videoDurations.reduce((a, b) => a + b, 0);
-          preloader.classList.add('hidden');
-        }
-      });
-
-      video.addEventListener('error', () => {
-        videoDurations[i - 1] = 8; // fallback 8s
-        loadedCount++;
-        if (loadedCount >= VIDEO_COUNT) {
-          totalDuration = videoDurations.reduce((a, b) => a + b, 0);
-          preloader.classList.add('hidden');
-        }
-      });
-
-      videos[i - 1] = video;
+async function loadAllFrames() {
+  const queue = Array.from({ length: TOTAL_FRAMES }, (_, i) => i);
+  async function worker() {
+    while (queue.length > 0) {
+      const idx = queue.shift();
+      await loadFrame(idx);
     }
   }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+}
 
-  /* ── NAV CLICKS ── */
-  function setupNav() {
-    document.querySelectorAll('[data-page]').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const pageIdx = parseInt(link.dataset.page);
-        const scrollTo = (pageIdx / PAGES) * SCROLL_HEIGHT;
-        window.scrollTo({ top: scrollTo, behavior: 'smooth' });
-        if (mobileNav.classList.contains('open')) {
-          mobileNav.classList.remove('open');
-          burger.classList.remove('open');
-        }
-      });
-    });
-
-    burger.addEventListener('click', () => {
-      burger.classList.toggle('open');
-      mobileNav.classList.toggle('open');
-    });
-
-    document.querySelectorAll('a[href="#contacts"]').forEach(a => {
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        const scrollTo = (5 / PAGES) * SCROLL_HEIGHT;
-        window.scrollTo({ top: scrollTo, behavior: 'smooth' });
-      });
-    });
+loadAllFrames().then(() => {
+  isReady = true;
+  const loader = document.getElementById('loader');
+  if (loader) {
+    loader.classList.add('fade-out');
+    setTimeout(() => loader.remove(), 900);
   }
+  if (pages[0]) pages[0].classList.add('is-active');
+});
 
-  /* ── COUNTER ANIMATION ── */
-  function animateCounters() {
-    const counters = document.querySelectorAll('.stat-num, .geo-stat-num');
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting && !entry.target.dataset.animated) {
-          entry.target.dataset.animated = 'true';
-          const text = entry.target.textContent;
-          const match = text.match(/(\d+)/);
-          if (match) {
-            const target = parseInt(match[1]);
-            const suffix = text.replace(match[1], '');
-            let current = 0;
-            const step = Math.ceil(target / 40);
-            const interval = setInterval(() => {
-              current = Math.min(current + step, target);
-              entry.target.textContent = current + suffix;
-              if (current >= target) clearInterval(interval);
-            }, 30);
-          }
-        }
-      });
-    }, { threshold: 0.5 });
-    counters.forEach(c => observer.observe(c));
-  }
+// ============================================================
+//  DRAW FRAME (cover-fit to canvas)
+// ============================================================
+function drawFrame(idx) {
+  const img = frames[Math.max(0, Math.min(idx, TOTAL_FRAMES - 1))];
+  if (!img) return;
+  const W = canvas.width, H = canvas.height;
+  const r = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+  const iw = img.naturalWidth * r, ih = img.naturalHeight * r;
+  const x = (W - iw) / 2, y = (H - ih) / 2;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(img, x, y, iw, ih);
+  // Vignette
+  const vig = ctx.createRadialGradient(W/2, H/2, H*0.18, W/2, H/2, H*0.85);
+  vig.addColorStop(0, 'rgba(10,12,16,0)');
+  vig.addColorStop(1, 'rgba(10,12,16,0.7)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+  // Bottom darkening
+  const bot = ctx.createLinearGradient(0, H*0.6, 0, H);
+  bot.addColorStop(0, 'rgba(10,12,16,0)');
+  bot.addColorStop(1, 'rgba(10,12,16,0.85)');
+  ctx.fillStyle = bot;
+  ctx.fillRect(0, H*0.6, W, H*0.4);
+}
 
-  /* ── INIT ── */
-  function init() {
-    resize();
-    loadVideos();
-    setupNav();
-    animateCounters();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', resize);
-    loop();
-    setActivePage(0);
-  }
+// ============================================================
+//  SCROLL → FRAME MAPPING
+// ============================================================
+window.addEventListener('scroll', () => {
+  if (!isReady) return;
+  const maxScroll = document.documentElement.scrollHeight - innerHeight;
+  const progress = maxScroll > 0 ? scrollY / maxScroll : 0;
+  targetFrame = progress * (TOTAL_FRAMES - 1);
+}, { passive: true });
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+// ============================================================
+//  RAF LOOP
+// ============================================================
+function animate() {
+  requestAnimationFrame(animate);
+  currentFrame += (targetFrame - currentFrame) * LERP;
+  if (isReady) drawFrame(Math.round(currentFrame));
+}
+animate();
+
+// ============================================================
+//  INTERSECTION OBSERVER — section activation
+// ============================================================
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const idx = pages.indexOf(entry.target);
+      pages.forEach((p, i) => p.classList.toggle('is-active', i === idx));
+      navLinks.forEach((l, i) => l.classList.toggle('active', i === idx));
+      mobileLinks.forEach((l, i) => l.classList.toggle('active', i === idx));
+      // Scroll indicator
+      const ind = document.getElementById('scroll-indicator');
+      if (ind) ind.classList.toggle('hide', idx > 0);
+    }
+  });
+}, { root: null, rootMargin: '-40% 0px -40% 0px' });
+
+pages.forEach(p => observer.observe(p));
+
+// ============================================================
+//  SCROLL-TO-SECTION (nav clicks)
+// ============================================================
+document.querySelectorAll('[data-page]').forEach(el => {
+  el.addEventListener('click', e => {
+    e.preventDefault();
+    const idx = parseInt(el.dataset.page);
+    if (pages[idx]) pages[idx].scrollIntoView({ behavior: 'smooth' });
+    // Close mobile nav
+    const mobileNav = document.getElementById('mobile-nav');
+    const burger = document.getElementById('burger');
+    if (mobileNav) mobileNav.classList.remove('open');
+    if (burger) burger.classList.remove('open');
+  });
+});
+
+document.querySelectorAll('a[href="#contacts"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    if (pages[5]) pages[5].scrollIntoView({ behavior: 'smooth' });
+  });
+});
+
+// ============================================================
+//  BURGER
+// ============================================================
+document.getElementById('burger').addEventListener('click', () => {
+  document.getElementById('burger').classList.toggle('open');
+  document.getElementById('mobile-nav').classList.toggle('open');
+});
+
+// ============================================================
+//  NAVBAR SCROLL EFFECT
+// ============================================================
+window.addEventListener('scroll', () => {
+  const header = document.getElementById('site-header');
+  if (scrollY > 60) {
+    header.style.background = 'rgba(10,12,16,0.97)';
   } else {
-    init();
+    header.style.background = 'rgba(10,12,16,0.80)';
   }
-})();
+}, { passive: true });
+
+// ============================================================
+//  COUNTER ANIMATION
+// ============================================================
+const counters = document.querySelectorAll('.stat-num, .geo-stat-num');
+const counterObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting && !entry.target.dataset.animated) {
+      entry.target.dataset.animated = 'true';
+      const text = entry.target.textContent;
+      const match = text.match(/(\d+)/);
+      if (match) {
+        const target = parseInt(match[1]);
+        const suffix = text.replace(match[1], '');
+        let current = 0;
+        const step = Math.ceil(target / 40);
+        const interval = setInterval(() => {
+          current = Math.min(current + step, target);
+          entry.target.textContent = current + suffix;
+          if (current >= target) clearInterval(interval);
+        }, 30);
+      }
+    }
+  });
+}, { threshold: 0.5 });
+counters.forEach(c => counterObserver.observe(c));
+
+// ============================================================
+//  CONTACT FORM
+// ============================================================
+const form = document.getElementById('contact-form');
+if (form) {
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const btn = form.querySelector('.btn-primary');
+    if (btn) {
+      btn.textContent = '✓ Заявка отправлена!';
+      btn.style.background = 'linear-gradient(135deg,#2dd4a8,#1fa882)';
+      setTimeout(() => {
+        btn.textContent = 'Отправить заявку';
+        btn.style.background = '';
+        form.reset();
+      }, 3500);
+    }
+  });
+}
