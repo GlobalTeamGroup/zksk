@@ -269,7 +269,7 @@ if (form) {
 }
 
 // ============================================================
-//  GALLERY SCROLL (snap per item, full-width)
+//  GALLERY SCROLL (snap per item, full-width, max 5 dots)
 // ============================================================
 (function() {
   const scroll = document.getElementById('gallery-scroll');
@@ -279,17 +279,29 @@ if (form) {
   const dotsWrap = document.getElementById('gallery-dots');
   if (!scroll || !track) return;
 
-  // Enable CSS snap
   scroll.style.scrollSnapType = 'x mandatory';
   const items = track.querySelectorAll('.gallery-item');
+  const total = items.length;
   items.forEach(item => { item.style.scrollSnapAlign = 'start'; });
 
-  // Create dots (one per photo)
-  for (let i = 0; i < items.length; i++) {
+  // Max 5 visible dots
+  const MAX_DOTS = 5;
+  const allDots = [];
+  for (let i = 0; i < total; i++) {
     const dot = document.createElement('button');
-    dot.className = 'gallery-dot' + (i === 0 ? ' active' : '');
+    dot.className = 'gallery-dot' + (i === 0 ? ' active' : '') + (i >= MAX_DOTS ? ' hidden' : '');
     dot.addEventListener('click', () => scrollToItem(i));
     dotsWrap.appendChild(dot);
+    allDots.push(dot);
+  }
+
+  function updateVisibleDots(activeIdx) {
+    let start = Math.max(0, activeIdx - Math.floor(MAX_DOTS / 2));
+    if (start + MAX_DOTS > total) start = Math.max(0, total - MAX_DOTS);
+    allDots.forEach((dot, i) => {
+      dot.classList.toggle('hidden', i < start || i >= start + MAX_DOTS);
+      dot.classList.toggle('active', i === activeIdx);
+    });
   }
 
   function scrollToItem(idx) {
@@ -299,26 +311,21 @@ if (form) {
   }
 
   function getActiveIdx() {
-    const scrollLeft = scroll.scrollLeft;
-    const itemW = items[0].offsetWidth + 10;
-    return Math.round(scrollLeft / itemW);
+    const itemW = items[0].offsetWidth || innerWidth;
+    return Math.round(scroll.scrollLeft / itemW);
   }
 
   function updateDots() {
-    const idx = getActiveIdx();
-    dotsWrap.querySelectorAll('.gallery-dot').forEach((d, i) =>
-      d.classList.toggle('active', i === idx));
+    updateVisibleDots(getActiveIdx());
   }
 
   scroll.addEventListener('scroll', updateDots, { passive: true });
 
   prevBtn.addEventListener('click', () => {
-    const idx = Math.max(0, getActiveIdx() - 1);
-    scrollToItem(idx);
+    scrollToItem(Math.max(0, getActiveIdx() - 1));
   });
   nextBtn.addEventListener('click', () => {
-    const idx = Math.min(items.length - 1, getActiveIdx() + 1);
-    scrollToItem(idx);
+    scrollToItem(Math.min(total - 1, getActiveIdx() + 1));
   });
 
   // Drag to scroll
@@ -342,7 +349,6 @@ if (form) {
   let zoomLevel = 1;
   let panX = 0, panY = 0;
 
-  // Create lightbox DOM
   const lb = document.createElement('div');
   lb.className = 'lightbox';
   lb.innerHTML = `
@@ -389,9 +395,8 @@ if (form) {
     lbImg.classList.toggle('zoomed', zoomLevel > 1);
   }
 
-  // Click to open
   items.forEach((item, i) => {
-    item.addEventListener('click', (e) => {
+    item.addEventListener('click', () => {
       if (isDragging) return;
       openLightbox(i);
     });
@@ -400,24 +405,13 @@ if (form) {
   lbClose.addEventListener('click', closeLightbox);
   lbPrev.addEventListener('click', () => showPhoto(lightboxIdx - 1));
   lbNext.addEventListener('click', () => showPhoto(lightboxIdx + 1));
+  lb.addEventListener('click', (e) => { if (e.target === lb) closeLightbox(); });
 
-  // Click background to close
-  lb.addEventListener('click', (e) => {
-    if (e.target === lb) closeLightbox();
-  });
-
-  // Click image to toggle zoom
   lbImg.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (zoomLevel > 1) {
-      resetZoom();
-    } else {
-      zoomLevel = 2.5;
-      applyTransform();
-    }
+    if (zoomLevel > 1) { resetZoom(); } else { zoomLevel = 2.5; applyTransform(); }
   });
 
-  // Mouse wheel zoom
   lb.addEventListener('wheel', (e) => {
     e.preventDefault();
     zoomLevel = Math.max(1, Math.min(5, zoomLevel + (e.deltaY > 0 ? -0.3 : 0.3)));
@@ -425,12 +419,11 @@ if (form) {
     applyTransform();
   }, { passive: false });
 
-  // Pan when zoomed
+  // Pan when zoomed (mouse)
   let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
   lbImg.addEventListener('mousedown', (e) => {
     if (zoomLevel <= 1) return;
-    e.preventDefault();
-    isPanning = true;
+    e.preventDefault(); isPanning = true;
     panStartX = e.clientX; panStartY = e.clientY;
     panOriginX = panX; panOriginY = panY;
   });
@@ -442,28 +435,59 @@ if (form) {
   });
   window.addEventListener('mouseup', () => { isPanning = false; });
 
-  // Touch pinch-to-zoom
-  let lastTouchDist = 0;
-  lbImg.addEventListener('touchstart', (e) => {
+  // Touch: swipe to navigate OR pinch-to-zoom
+  let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+  let lastTouchDist = 0, isSwiping = false;
+
+  lb.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2) {
-      lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
-                                  e.touches[0].clientY - e.touches[1].clientY);
+      // Pinch start
+      lastTouchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      isSwiping = false;
+    } else if (e.touches.length === 1 && zoomLevel <= 1) {
+      // Swipe start
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = Date.now();
+      isSwiping = true;
     }
   }, { passive: true });
-  lbImg.addEventListener('touchmove', (e) => {
+
+  lb.addEventListener('touchmove', (e) => {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
-                               e.touches[0].clientY - e.touches[1].clientY);
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
       const delta = (dist - lastTouchDist) * 0.01;
       zoomLevel = Math.max(1, Math.min(5, zoomLevel + delta));
       lastTouchDist = dist;
       if (zoomLevel <= 1) { resetZoom(); return; }
       applyTransform();
+      isSwiping = false;
+    } else if (e.touches.length === 1 && isSwiping && zoomLevel <= 1) {
+      // Track swipe but don't prevent default yet
     }
   }, { passive: false });
 
-  // Keyboard navigation
+  lb.addEventListener('touchend', (e) => {
+    if (!isSwiping || zoomLevel > 1) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    const dt = Date.now() - touchStartTime;
+    // Swipe if horizontal distance > 50px, faster than 400ms, more horizontal than vertical
+    if (Math.abs(dx) > 50 && dt < 400 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) showPhoto(lightboxIdx + 1); // swipe left = next
+      else showPhoto(lightboxIdx - 1);         // swipe right = prev
+    }
+    isSwiping = false;
+  }, { passive: true });
+
+  // Keyboard
   document.addEventListener('keydown', (e) => {
     if (!lb.classList.contains('active')) return;
     if (e.key === 'Escape') closeLightbox();

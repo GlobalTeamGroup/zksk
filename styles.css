@@ -153,22 +153,23 @@ body{font-family:var(--font-b);color:var(--text);background:var(--bg);overflow-x
 .geo-stat-label{font-size:12px;color:#ffffff;margin-top:4px;text-shadow:var(--ts)}
 
 /* GALLERY */
-.gallery-page .page-inner{max-width:100%;padding:0 5px}
+.gallery-page .page-inner{max-width:100%;padding:0}
 .gallery-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;cursor:grab;margin-top:8px}
 .gallery-scroll::-webkit-scrollbar{display:none}
 .gallery-scroll.grabbing{cursor:grabbing}
-.gallery-track{display:flex;gap:10px}
-.gallery-item{flex:0 0 calc(100vw - 10px);border-radius:var(--radius);overflow:hidden;position:relative;isolation:isolate;transition:transform .3s;cursor:pointer}
-.gallery-item::before{content:"";position:absolute;inset:-1px;border-radius:15px;padding:1px;background:conic-gradient(from var(--border-angle),#F6F8FE,#F9F64B,#EB4964,#54667E,#6884C0,#DAFAFF,#F9F9FD,#EDB675,#571E1B,#20191B,#3A3E57,#898FA2,#F6F8FE);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;animation:border-spin 3s linear infinite;z-index:1;pointer-events:none}
-.gallery-item:hover{transform:scale(1.01)}
-.gallery-item img{width:100%;height:clamp(250px,50vw,500px);object-fit:cover;display:block;border-radius:var(--radius)}
-.gallery-controls{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:20px}
+.gallery-track{display:flex;gap:0}
+.gallery-item{flex:0 0 100vw;border-radius:0;overflow:hidden;position:relative;isolation:isolate;transition:transform .3s;cursor:pointer;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center}
+.gallery-item::before{content:"";position:absolute;inset:0;border-radius:0;padding:0;background:none;-webkit-mask:none;mask:none;animation:none;z-index:1;pointer-events:none}
+.gallery-item:hover{transform:none}
+.gallery-item img{width:100%;height:clamp(250px,50vw,500px);object-fit:contain;display:block;border-radius:0}
+.gallery-controls{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:20px}
 .gallery-btn{width:44px;height:44px;border-radius:50%;border:none;background:var(--card-bg);color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .3s,transform .2s;position:relative;isolation:isolate;text-shadow:none}
 .gallery-btn::before{content:"";position:absolute;inset:-1px;border-radius:50%;padding:1px;background:conic-gradient(from var(--border-angle),#F6F8FE,#F9F64B,#EB4964,#54667E,#6884C0,#DAFAFF,#F9F9FD,#EDB675,#571E1B,#20191B,#3A3E57,#898FA2,#F6F8FE);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;animation:border-spin 3s linear infinite;z-index:-1;pointer-events:none}
 .gallery-btn:hover{background:rgba(201,168,76,.2);transform:scale(1.1)}
-.gallery-dots{display:flex;gap:8px;align-items:center}
-.gallery-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25);transition:background .3s,transform .3s;cursor:pointer;border:none;padding:0}
+.gallery-dots{display:flex;gap:6px;align-items:center}
+.gallery-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.25);transition:background .3s,transform .3s,opacity .3s;cursor:pointer;border:none;padding:0}
 .gallery-dot.active{background:var(--gold);transform:scale(1.4)}
+.gallery-dot.hidden{display:none}
 
 /* LIGHTBOX */
 .lightbox{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s;backdrop-filter:blur(10px)}
@@ -222,6 +223,8 @@ body{font-family:var(--font-b);color:var(--text);background:var(--bg);overflow-x
   .mobile-nav.open{display:flex}
   .logo-text{font-size:20px;letter-spacing:1px}
   .hero-line1{font-size:clamp(18px,5vw,30px)}
+  .gallery-item{flex:0 0 calc(100vw - 40px)}
+  .gallery-item img{max-height:none}
 }
 @media(max-width:600px){
   .advantages-grid{grid-template-columns:1fr}
