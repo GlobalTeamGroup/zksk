@@ -230,10 +230,14 @@ body{font-family:var(--font-b);color:var(--text);background:var(--bg);overflow-x
   .mobile-nav.open{display:flex}
   .logo-text{font-size:20px;letter-spacing:1px}
   .hero-line1{font-size:clamp(18px,5vw,30px)}
-  .carousel-card{width:clamp(180px,45vw,260px);height:clamp(220px,55vw,340px)}
+  .gallery-page .page-inner{padding:0 0}
+  .carousel-container{overflow:visible}
+  .carousel-arrow-left{left:4px}
+  .carousel-arrow-right{right:4px}
+  .carousel-card{width:clamp(180px,50vw,260px);height:clamp(220px,60vw,340px)}
   .carousel-card.left-2{transform:translateX(-55vw) scale(0.7) translateZ(-300px)}
-  .carousel-card.left-1{transform:translateX(-28vw) scale(0.85) translateZ(-100px)}
-  .carousel-card.right-1{transform:translateX(28vw) scale(0.85) translateZ(-100px)}
+  .carousel-card.left-1{transform:translateX(-30vw) scale(0.85) translateZ(-100px)}
+  .carousel-card.right-1{transform:translateX(30vw) scale(0.85) translateZ(-100px)}
   .carousel-card.right-2{transform:translateX(55vw) scale(0.7) translateZ(-300px)}
 }
 @media(max-width:600px){
