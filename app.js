@@ -269,85 +269,95 @@ if (form) {
 }
 
 // ============================================================
-//  GALLERY SCROLL (snap per item, full-width, max 5 dots)
+//  3D CAROUSEL (CodePen-style with lightbox)
 // ============================================================
 (function() {
-  const scroll = document.getElementById('gallery-scroll');
-  const track = scroll ? scroll.querySelector('.gallery-track') : null;
-  const prevBtn = document.getElementById('gallery-prev');
-  const nextBtn = document.getElementById('gallery-next');
-  const dotsWrap = document.getElementById('gallery-dots');
-  if (!scroll || !track) return;
+  const cards = document.querySelectorAll('.carousel-card');
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  const dotsWrap = document.getElementById('carousel-dots');
+  if (!cards.length) return;
 
-  scroll.style.scrollSnapType = 'x mandatory';
-  const items = track.querySelectorAll('.gallery-item');
-  const total = items.length;
-  items.forEach(item => { item.style.scrollSnapAlign = 'start'; });
-
-  // Max 5 visible dots
+  const total = cards.length;
+  let currentIndex = 0;
+  let isAnimating = false;
   const MAX_DOTS = 5;
+
+  // Create dots
   const allDots = [];
   for (let i = 0; i < total; i++) {
     const dot = document.createElement('button');
-    dot.className = 'gallery-dot' + (i === 0 ? ' active' : '') + (i >= MAX_DOTS ? ' hidden' : '');
-    dot.addEventListener('click', () => scrollToItem(i));
+    dot.className = 'c-dot' + (i === 0 ? ' active' : '') + (i >= MAX_DOTS ? ' c-hidden' : '');
+    dot.addEventListener('click', () => updateCarousel(i));
     dotsWrap.appendChild(dot);
     allDots.push(dot);
   }
 
-  function updateVisibleDots(activeIdx) {
-    let start = Math.max(0, activeIdx - Math.floor(MAX_DOTS / 2));
+  function updateVisibleDots(idx) {
+    let start = Math.max(0, idx - Math.floor(MAX_DOTS / 2));
     if (start + MAX_DOTS > total) start = Math.max(0, total - MAX_DOTS);
-    allDots.forEach((dot, i) => {
-      dot.classList.toggle('hidden', i < start || i >= start + MAX_DOTS);
-      dot.classList.toggle('active', i === activeIdx);
+    allDots.forEach((d, i) => {
+      d.classList.toggle('c-hidden', i < start || i >= start + MAX_DOTS);
+      d.classList.toggle('active', i === idx);
     });
   }
 
-  function scrollToItem(idx) {
-    if (items[idx]) {
-      scroll.scrollTo({ left: items[idx].offsetLeft, behavior: 'smooth' });
+  function updateCarousel(newIndex) {
+    if (isAnimating) return;
+    isAnimating = true;
+    currentIndex = ((newIndex % total) + total) % total;
+
+    cards.forEach((card, i) => {
+      const offset = ((i - currentIndex) % total + total) % total;
+      card.classList.remove('center', 'left-1', 'left-2', 'right-1', 'right-2', 'c-hidden');
+
+      if (offset === 0) card.classList.add('center');
+      else if (offset === 1) card.classList.add('right-1');
+      else if (offset === 2) card.classList.add('right-2');
+      else if (offset === total - 1) card.classList.add('left-1');
+      else if (offset === total - 2) card.classList.add('left-2');
+      else card.classList.add('c-hidden');
+    });
+
+    updateVisibleDots(currentIndex);
+    setTimeout(() => { isAnimating = false; }, 800);
+  }
+
+  prevBtn.addEventListener('click', () => updateCarousel(currentIndex - 1));
+  nextBtn.addEventListener('click', () => updateCarousel(currentIndex + 1));
+
+  // Click card to focus or open lightbox
+  cards.forEach((card, i) => {
+    card.addEventListener('click', () => {
+      if (i === currentIndex) {
+        openLightbox(i);
+      } else {
+        updateCarousel(i);
+      }
+    });
+  });
+
+  // Touch swipe on carousel
+  let cTouchStartX = 0;
+  const container = document.getElementById('carousel-container');
+  container.addEventListener('touchstart', e => {
+    cTouchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  container.addEventListener('touchend', e => {
+    const diff = cTouchStartX - e.changedTouches[0].screenX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) updateCarousel(currentIndex + 1);
+      else updateCarousel(currentIndex - 1);
     }
-  }
+  }, { passive: true });
 
-  function getActiveIdx() {
-    const itemW = items[0].offsetWidth || innerWidth;
-    return Math.round(scroll.scrollLeft / itemW);
-  }
-
-  function updateDots() {
-    updateVisibleDots(getActiveIdx());
-  }
-
-  scroll.addEventListener('scroll', updateDots, { passive: true });
-
-  prevBtn.addEventListener('click', () => {
-    scrollToItem(Math.max(0, getActiveIdx() - 1));
-  });
-  nextBtn.addEventListener('click', () => {
-    scrollToItem(Math.min(total - 1, getActiveIdx() + 1));
-  });
-
-  // Drag to scroll
-  let isDragging = false, startX, scrollStart;
-  scroll.addEventListener('mousedown', e => {
-    isDragging = true; startX = e.pageX; scrollStart = scroll.scrollLeft;
-    scroll.classList.add('grabbing');
-  });
-  window.addEventListener('mousemove', e => {
-    if (!isDragging) return;
-    e.preventDefault();
-    scroll.scrollLeft = scrollStart - (e.pageX - startX);
-  });
-  window.addEventListener('mouseup', () => {
-    isDragging = false; scroll.classList.remove('grabbing');
-  });
+  // Init
+  updateCarousel(0);
 
   // ---- LIGHTBOX ----
-  const srcs = Array.from(items).map(item => item.querySelector('img').src);
+  const srcs = Array.from(cards).map(c => c.querySelector('img').src);
   let lightboxIdx = 0;
-  let zoomLevel = 1;
-  let panX = 0, panY = 0;
+  let zoomLevel = 1, panX = 0, panY = 0;
 
   const lb = document.createElement('div');
   lb.className = 'lightbox';
@@ -358,11 +368,7 @@ if (form) {
     <img class="lightbox-img" src="" alt="Gallery">
   `;
   document.body.appendChild(lb);
-
   const lbImg = lb.querySelector('.lightbox-img');
-  const lbClose = lb.querySelector('.lightbox-close');
-  const lbPrev = lb.querySelector('.lightbox-prev');
-  const lbNext = lb.querySelector('.lightbox-next');
 
   function openLightbox(idx) {
     lightboxIdx = idx;
@@ -371,128 +377,103 @@ if (form) {
     lb.classList.add('active');
     document.body.style.overflow = 'hidden';
   }
-
   function closeLightbox() {
     lb.classList.remove('active');
     document.body.style.overflow = '';
     resetZoom();
   }
-
   function showPhoto(idx) {
     lightboxIdx = Math.max(0, Math.min(idx, srcs.length - 1));
     lbImg.src = srcs[lightboxIdx];
     resetZoom();
   }
-
   function resetZoom() {
     zoomLevel = 1; panX = 0; panY = 0;
-    lbImg.style.transform = 'scale(1) translate(0px, 0px)';
+    lbImg.style.transform = 'scale(1) translate(0,0)';
     lbImg.classList.remove('zoomed');
   }
-
   function applyTransform() {
-    lbImg.style.transform = `scale(${zoomLevel}) translate(${panX}px, ${panY}px)`;
+    lbImg.style.transform = `scale(${zoomLevel}) translate(${panX}px,${panY}px)`;
     lbImg.classList.toggle('zoomed', zoomLevel > 1);
   }
 
-  items.forEach((item, i) => {
-    item.addEventListener('click', () => {
-      if (isDragging) return;
-      openLightbox(i);
-    });
-  });
+  lb.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+  lb.querySelector('.lightbox-prev').addEventListener('click', () => showPhoto(lightboxIdx - 1));
+  lb.querySelector('.lightbox-next').addEventListener('click', () => showPhoto(lightboxIdx + 1));
+  lb.addEventListener('click', e => { if (e.target === lb) closeLightbox(); });
 
-  lbClose.addEventListener('click', closeLightbox);
-  lbPrev.addEventListener('click', () => showPhoto(lightboxIdx - 1));
-  lbNext.addEventListener('click', () => showPhoto(lightboxIdx + 1));
-  lb.addEventListener('click', (e) => { if (e.target === lb) closeLightbox(); });
-
-  lbImg.addEventListener('click', (e) => {
+  lbImg.addEventListener('click', e => {
     e.stopPropagation();
-    if (zoomLevel > 1) { resetZoom(); } else { zoomLevel = 2.5; applyTransform(); }
+    if (zoomLevel > 1) resetZoom();
+    else { zoomLevel = 2.5; applyTransform(); }
   });
 
-  lb.addEventListener('wheel', (e) => {
+  lb.addEventListener('wheel', e => {
     e.preventDefault();
     zoomLevel = Math.max(1, Math.min(5, zoomLevel + (e.deltaY > 0 ? -0.3 : 0.3)));
     if (zoomLevel <= 1) { resetZoom(); return; }
     applyTransform();
   }, { passive: false });
 
-  // Pan when zoomed (mouse)
-  let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
-  lbImg.addEventListener('mousedown', (e) => {
+  // Pan
+  let isPanning = false, psx, psy, pox, poy;
+  lbImg.addEventListener('mousedown', e => {
     if (zoomLevel <= 1) return;
     e.preventDefault(); isPanning = true;
-    panStartX = e.clientX; panStartY = e.clientY;
-    panOriginX = panX; panOriginY = panY;
+    psx = e.clientX; psy = e.clientY; pox = panX; poy = panY;
   });
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('mousemove', e => {
     if (!isPanning) return;
-    panX = panOriginX + (e.clientX - panStartX) / zoomLevel;
-    panY = panOriginY + (e.clientY - panStartY) / zoomLevel;
+    panX = pox + (e.clientX - psx) / zoomLevel;
+    panY = poy + (e.clientY - psy) / zoomLevel;
     applyTransform();
   });
   window.addEventListener('mouseup', () => { isPanning = false; });
 
-  // Touch: swipe to navigate OR pinch-to-zoom
-  let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
-  let lastTouchDist = 0, isSwiping = false;
-
-  lb.addEventListener('touchstart', (e) => {
+  // Touch swipe in lightbox + pinch
+  let lbTouchX = 0, lbTouchY = 0, lbTouchT = 0, lbSwiping = false, lastDist = 0;
+  lb.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
-      // Pinch start
-      lastTouchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      isSwiping = false;
+      lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      lbSwiping = false;
     } else if (e.touches.length === 1 && zoomLevel <= 1) {
-      // Swipe start
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-      touchStartTime = Date.now();
-      isSwiping = true;
+      lbTouchX = e.touches[0].clientX;
+      lbTouchY = e.touches[0].clientY;
+      lbTouchT = Date.now();
+      lbSwiping = true;
     }
   }, { passive: true });
-
-  lb.addEventListener('touchmove', (e) => {
+  lb.addEventListener('touchmove', e => {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const delta = (dist - lastTouchDist) * 0.01;
-      zoomLevel = Math.max(1, Math.min(5, zoomLevel + delta));
-      lastTouchDist = dist;
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      zoomLevel = Math.max(1, Math.min(5, zoomLevel + (dist - lastDist) * 0.01));
+      lastDist = dist;
       if (zoomLevel <= 1) { resetZoom(); return; }
-      applyTransform();
-      isSwiping = false;
-    } else if (e.touches.length === 1 && isSwiping && zoomLevel <= 1) {
-      // Track swipe but don't prevent default yet
+      applyTransform(); lbSwiping = false;
     }
   }, { passive: false });
-
-  lb.addEventListener('touchend', (e) => {
-    if (!isSwiping || zoomLevel > 1) return;
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
-    const dt = Date.now() - touchStartTime;
-    // Swipe if horizontal distance > 50px, faster than 400ms, more horizontal than vertical
-    if (Math.abs(dx) > 50 && dt < 400 && Math.abs(dx) > Math.abs(dy)) {
-      if (dx < 0) showPhoto(lightboxIdx + 1); // swipe left = next
-      else showPhoto(lightboxIdx - 1);         // swipe right = prev
+  lb.addEventListener('touchend', e => {
+    if (!lbSwiping || zoomLevel > 1) return;
+    const dx = e.changedTouches[0].clientX - lbTouchX;
+    const dy = e.changedTouches[0].clientY - lbTouchY;
+    if (Math.abs(dx) > 50 && (Date.now() - lbTouchT) < 400 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) showPhoto(lightboxIdx + 1);
+      else showPhoto(lightboxIdx - 1);
     }
-    isSwiping = false;
+    lbSwiping = false;
   }, { passive: true });
 
   // Keyboard
-  document.addEventListener('keydown', (e) => {
-    if (!lb.classList.contains('active')) return;
-    if (e.key === 'Escape') closeLightbox();
-    if (e.key === 'ArrowLeft') showPhoto(lightboxIdx - 1);
-    if (e.key === 'ArrowRight') showPhoto(lightboxIdx + 1);
+  document.addEventListener('keydown', e => {
+    if (lb.classList.contains('active')) {
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') showPhoto(lightboxIdx - 1);
+      if (e.key === 'ArrowRight') showPhoto(lightboxIdx + 1);
+    } else if (document.getElementById('page-3')?.classList.contains('is-active')) {
+      if (e.key === 'ArrowLeft') updateCarousel(currentIndex - 1);
+      if (e.key === 'ArrowRight') updateCarousel(currentIndex + 1);
+    }
   });
 })();
 
