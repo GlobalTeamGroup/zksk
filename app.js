@@ -1,9 +1,9 @@
 // ============================================================
 //  ZKSK — app.js   (ScrollCanvas Engine — Frame-based)
-//  864 frames, 7 pages, synced to native scroll
+//  792 frames, 7 pages, synced to native scroll
 // ============================================================
 
-const TOTAL_FRAMES = 864;
+const TOTAL_FRAMES = 792;
 const PAGE_COUNT   = 7;
 const LERP         = 0.02;
 const CONCURRENCY  = 48;
