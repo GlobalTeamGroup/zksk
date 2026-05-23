@@ -39,8 +39,7 @@ const loaderEl = document.createElement('div');
 loaderEl.id = 'loader';
 loaderEl.innerHTML = `
   <div class="loader-inner">
-    <img src="logo.png" alt="ЗКСK" style="width:160px;height:160px;object-fit:contain;margin-bottom:12px">
-    <div class="loader-logo">ЗКСK</div>
+    <img src="logo-full.png" alt="Застройщик Курортов Северного Кавказа" style="width:clamp(260px,60vw,500px);height:auto;object-fit:contain;margin-bottom:16px">
     <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
     <div class="loader-pct" id="loader-pct">0%</div>
   </div>`;
