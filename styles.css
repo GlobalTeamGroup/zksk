@@ -244,4 +244,5 @@ body{font-family:var(--font-b);color:var(--text);background:var(--bg);overflow-x
   .geo-stats{grid-template-columns:1fr}
   .hero-stats{gap:16px}
   .stat{min-width:80px}
+  .hero-bull{display:none}
 }
